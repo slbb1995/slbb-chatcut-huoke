@@ -1,0 +1,4 @@
+interface:
+  display_name: "单条口播剪辑"
+  short_description: "调用 ChatCut 剪口播与讲解，不限题材时长，按素材配字幕、标题、画面和音乐"
+  default_prompt: "使用 $slbb-chatcut-huoke，先提取完整口播文案再精剪，删多余口头语并保留自然气口，字幕逐句校对，顶部标题写清主题且形式和时长按内容判断，预览确认后按当次目标位置只交付最终成片。"
