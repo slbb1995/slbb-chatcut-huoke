@@ -10,7 +10,11 @@ import subprocess
 import sys
 
 
-def verify(path, expected_duration=None, decode=False):
+def verify(path, expected_duration=None, decode=False, *, expected_width=1080,
+           expected_height=1920, expected_fps=30, expected_codec="h264"):
+    if (expected_width <= 0 or expected_height <= 0 or
+            not math.isfinite(expected_fps) or expected_fps <= 0 or not expected_codec.strip()):
+        raise ValueError("Expected dimensions, fps and codec must be valid positive values/nonempty text")
     if not path.is_file() or path.stat().st_size == 0:
         raise ValueError("Nonempty video file required")
     if not shutil.which("ffprobe"):
@@ -24,16 +28,16 @@ def verify(path, expected_duration=None, decode=False):
     v = next((s for s in streams if s.get("codec_type") == "video"), {})
     a = next((s for s in streams if s.get("codec_type") == "audio"), {})
     errors = []
-    if v.get("codec_name") != "h264":
-        errors.append("video codec is not H.264")
-    if (v.get("width"), v.get("height")) != (1080, 1920):
-        errors.append("resolution is not 1080x1920")
+    if v.get("codec_name") != expected_codec:
+        errors.append("video codec is not " + expected_codec)
+    if (v.get("width"), v.get("height")) != (expected_width, expected_height):
+        errors.append("resolution is not %sx%s" % (expected_width, expected_height))
     try:
         fps = float(Fraction(v.get("avg_frame_rate", "0/1")))
     except (ValueError, ZeroDivisionError):
         fps = 0
-    if abs(fps - 30) > 0.01:
-        errors.append("frame rate is not 30fps")
+    if abs(fps - expected_fps) > 0.01:
+        errors.append("frame rate is not %sfps" % expected_fps)
     if not a:
         errors.append("audio stream missing")
     duration = float(info.get("format", {}).get("duration", 0))
@@ -42,7 +46,7 @@ def verify(path, expected_duration=None, decode=False):
     if expected_duration is not None:
         if not math.isfinite(expected_duration) or expected_duration <= 0:
             raise ValueError("Expected duration must be a positive finite number")
-        tolerance = max(2/30, 0.1)
+        tolerance = max(2/expected_fps, 0.1)
         if abs(duration - expected_duration) > tolerance:
             errors.append("duration differs from main-track duration by more than %.3fs" % tolerance)
         for key, s in (("video", v), ("audio", a)):
@@ -65,6 +69,8 @@ def verify(path, expected_duration=None, decode=False):
         if not decoded:
             errors.append("full decode reported an error")
     return {"technical_pass": not errors, "file": str(path.resolve()), "duration_seconds": duration,
+            "expected": {"width": expected_width, "height": expected_height,
+                         "fps": expected_fps, "codec": expected_codec},
             "codec": v.get("codec_name"), "width": v.get("width"), "height": v.get("height"),
             "fps": fps, "audio_present": bool(a), "decode_checked": decode, "decode_pass": decoded if decode else None,
             "errors": errors, "unverified": ["caption accuracy and pixels", "picture quality and sync", "audible mix and clipping"]}
@@ -74,10 +80,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("file", type=Path)
     ap.add_argument("--expected-duration", type=float)
+    ap.add_argument("--expected-width", type=int, default=1080)
+    ap.add_argument("--expected-height", type=int, default=1920)
+    ap.add_argument("--expected-fps", type=float, default=30)
+    ap.add_argument("--expected-codec", default="h264", help="ffprobe codec name; default: h264")
     ap.add_argument("--decode", action="store_true")
     args = ap.parse_args()
     try:
-        result = verify(args.file.expanduser(), args.expected_duration, args.decode)
+        result = verify(args.file.expanduser(), args.expected_duration, args.decode,
+                        expected_width=args.expected_width, expected_height=args.expected_height,
+                        expected_fps=args.expected_fps, expected_codec=args.expected_codec)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["technical_pass"] else 1
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:

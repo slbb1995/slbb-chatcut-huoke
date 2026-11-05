@@ -79,11 +79,6 @@ def operate(args):
     elif action == "event":
         if args.kind in ("error", "repair") and not args.key:
             raise ValueError("Errors/repairs need a stable root-cause key")
-        if args.kind == "repair" and any(e["kind"] == "repair" and e.get("key") == args.key for e in data["events"]):
-            data["status"] = "blocked"
-            data["blocked_reason"] = "Repair budget exhausted: " + args.key
-            save(path, data)
-            raise ValueError(data["blocked_reason"])
         data["events"].append({"at": now(), "stage": args.stage, "kind": args.kind,
                                "key": args.key, "detail": args.detail})
     elif action == "preview":
